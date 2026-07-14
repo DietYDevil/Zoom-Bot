@@ -2,8 +2,9 @@ name: Run Zoom Bot
 
 on:
   schedule:
-    - cron: '55 3 * * *' 
-  workflow_dispatch: 
+    # Triggers every 30 minutes, 24/7
+    - cron: '*/30 * * * *'
+  workflow_dispatch: # Keeps manual testing button enabled
 
 jobs:
   run-bot:
@@ -24,6 +25,5 @@ jobs:
         pip install playwright requests
         playwright install --with-deps chromium 
 
-    - name: Run the Bot
-
-      run: python cloud_bot.py
+    - name: Run Smart Scheduler
+      run: python bot.py
