@@ -110,7 +110,7 @@ def check_schedule():
             
             # Check if this specific class starts in the next 35 minutes
             time_difference = class_time - now_ist
-            if timedelta(minutes=0) <= time_difference <= timedelta(minutes=60):
+            if timedelta(minutes=0) <= time_difference <= timedelta(minutes=30):
                 upcoming_class_found = True
                 sleep_seconds = int(time_difference.total_seconds())
                 
