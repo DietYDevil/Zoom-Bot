@@ -26,4 +26,4 @@ jobs:
         playwright install --with-deps chromium 
 
     - name: Run Smart Scheduler
-      run: python bot.py
+      run: python cloud_bot.py
