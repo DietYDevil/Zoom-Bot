@@ -5,10 +5,10 @@ import requests
 from playwright.sync_api import sync_playwright
 
 # --- CONFIGURATION ---
-BOT_TOKEN = "8569732444:AAF-MXnoL8dyqcggIPsKCBr9fb652U3wXZk"
-CHAT_ID = "1103873760"
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
 PORTAL_URL = "https://course.onlinecareerendeavour.com/student/tests"
-MY_COOKIE_STRING = "reset_id=64874dd10477e17e9626e112; captchaWord=311663; device_id=281b9c84481067c950da; token=a577aa5fe418eb710a1429b198bbd307; student_id=64874dd10477e17e9626e112; sprofile_pic=https%3A%2F%2Fd3bioexaf647f4.cloudfront.net%2Fsubjectiveuploads%2Fuser_careerendeavour%2F1686588930.jpg; _ga_1RSRE352DM=GS2.1.s1783965172$o1$g0$t1783965172$j60$l0$h0; _ga=GA1.1.367767714.1783965172"
+MY_COOKIE_STRING = os.environ.get("MY_COOKIE_STRING")
 # ----------------------
 
 # Indian Standard Time (IST) Offset is UTC + 5:30
