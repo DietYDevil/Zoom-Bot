@@ -2,9 +2,13 @@ name: Run Zoom Bot
 
 on:
   schedule:
-    # Triggers every 30 minutes, 24/7
     - cron: '*/30 * * * *'
-  workflow_dispatch: # Keeps manual testing button enabled
+  workflow_dispatch: 
+
+# THIS IS THE NEW PART: It prevents multiple bots from running at the same time
+concurrency:
+  group: zoom-bot-group
+  cancel-in-progress: false
 
 jobs:
   run-bot:
