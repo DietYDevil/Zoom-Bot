@@ -1,14 +1,9 @@
 name: Run Zoom Bot
 
 on:
-  schedule:
-    - cron: '0 1-15/2 * * *'
+  repository_dispatch:
+    types: [class-starting-trigger] # The secret knock that wakes up the server
   workflow_dispatch: 
-
-# THIS IS THE NEW PART: It prevents multiple bots from running at the same time
-concurrency:
-  group: zoom-bot-group
-  cancel-in-progress: false
 
 jobs:
   run-bot:
@@ -30,4 +25,8 @@ jobs:
         playwright install --with-deps chromium 
 
     - name: Run Smart Scheduler
-      run: python cloud_bot.py
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+        COOKIE_STRING: ${{ secrets.COOKIE_STRING }}
+      run: python bot.py
