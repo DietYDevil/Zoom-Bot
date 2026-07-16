@@ -110,7 +110,7 @@ def check_schedule():
 
             # Check if class starts in next 35 mins OR is currently ongoing (started up to 2 hours ago)
             time_difference = class_time - now_ist
-            if timedelta(minutes=-120) <= time_difference <= timedelta(minutes=35):
+            if timedelta(minutes=-120) <= time_difference <= timedelta(minutes=180):
                 upcoming_class_found = True
                 
                 # If time_difference is negative (class already started), sleep_seconds becomes 0
@@ -131,7 +131,7 @@ def check_schedule():
 
                 
         if not upcoming_class_found:
-            print("[*] Scan complete: No classes scheduled within the next 35 minutes. Exiting instantly.")
+            print("[*] Scan complete: No classes scheduled within the next 180 minutes. Exiting instantly.")
             
         browser.close()
 
