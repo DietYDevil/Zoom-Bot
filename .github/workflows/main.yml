@@ -2,7 +2,7 @@ name: Run Zoom Bot
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '0 1-15/2 * * *'
   workflow_dispatch: 
 
 # THIS IS THE NEW PART: It prevents multiple bots from running at the same time
