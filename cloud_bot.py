@@ -88,8 +88,14 @@ def check_schedule():
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(extra_http_headers={"Cookie": MY_COOKIE_STRING})
         page = context.new_page()
+
+        # Intercept and block all images, CSS, fonts, and media
+        page.route("**/*", lambda route: route.abort() 
+                   if route.request.resource_type in ["image", "stylesheet", "font", "media"] 
+                   else route.continue_())
         
         page.goto(PORTAL_URL, wait_until="networkidle")
+        page.locator("text='Live'").first.click()
         
         # Gather all table rows from the live classes tab
         rows = page.locator("tr").all()
@@ -104,9 +110,20 @@ def check_schedule():
             if not class_time:
                 continue
                 
-            # Extract clean title name (grabs up to the keyword Lecture/L_0X)
-            title_match = re.search(r'(NET\s+.*?_LECTURE_\d+|MP_.*?_LECTURE_\d+)', row_text)
-            lecture_title = title_match.group(1) if title_match else row_text.splitlines()[0].strip()
+            # DYNAMIC TARGETING: Grab the exact text of the first line in the row, no matter what it says.
+            lines = [line.strip() for line in row_text.splitlines() if line.strip()]
+            if not lines:
+                continue
+            lecture_title = lines[0] # Locks onto the exact name the professor typed today
+            
+            # If the row says it's already Completed or Cancelled, skip it immediately!
+            if "Completed" in row_text or "Ended" in row_text:
+                continue
+            # -----------------------------
+
+            # Check if class starts in next 180 mins OR is currently ongoing (started up to 25 mins ago)
+            time_difference = class_time - now_ist
+            if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
 
             # Check if class starts in next 35 mins OR is currently ongoing (started up to 2 hours ago)
             time_difference = class_time - now_ist
