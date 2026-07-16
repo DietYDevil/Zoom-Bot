@@ -29,4 +29,4 @@ jobs:
         BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         CHAT_ID: ${{ secrets.CHAT_ID }}
         MY_COOKIE_STRING: ${{ secrets.MY_COOKIE_STRING }}
-      run: python bot.py
+      run: python cloud_bot.py
