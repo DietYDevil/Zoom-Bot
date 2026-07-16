@@ -107,23 +107,28 @@ def check_schedule():
             # Extract clean title name (grabs up to the keyword Lecture/L_0X)
             title_match = re.search(r'(NET\s+.*?_LECTURE_\d+|MP_.*?_LECTURE_\d+)', row_text)
             lecture_title = title_match.group(1) if title_match else row_text.splitlines()[0].strip()
-            
-            # Check if this specific class starts in the next 35 minutes
+
+            # Check if class starts in next 35 mins OR is currently ongoing (started up to 2 hours ago)
             time_difference = class_time - now_ist
-            if timedelta(minutes=0) <= time_difference <= timedelta(minutes=30):
+            if timedelta(minutes=-120) <= time_difference <= timedelta(minutes=35):
                 upcoming_class_found = True
-                sleep_seconds = int(time_difference.total_seconds())
                 
-                print(f"[+] Found Upcoming Class: {lecture_title}")
+                # If time_difference is negative (class already started), sleep_seconds becomes 0
+                sleep_seconds = max(0, int(time_difference.total_seconds()))
+                
+                print(f"[+] Found Target Class: {lecture_title}")
                 print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
-                print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
                 
                 if sleep_seconds > 0:
+                    print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
                     time.sleep(sleep_seconds)
+                else:
+                    print("[*] Class time has already arrived! Executing immediately.")
                 
                 # Execute the fail-safe retrieval loop
                 monitor_and_extract(context, page, lecture_title)
                 break
+
                 
         if not upcoming_class_found:
             print("[*] Scan complete: No classes scheduled within the next 35 minutes. Exiting instantly.")
