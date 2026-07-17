@@ -124,10 +124,6 @@ def check_schedule():
             # Check if class starts in next 180 mins OR is currently ongoing (started up to 25 mins ago)
             time_difference = class_time - now_ist
             if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
-
-            # Check if class starts in next 35 mins OR is currently ongoing (started up to 2 hours ago)
-            time_difference = class_time - now_ist
-            if timedelta(minutes=-120) <= time_difference <= timedelta(minutes=180):
                 upcoming_class_found = True
                 
                 # If time_difference is negative (class already started), sleep_seconds becomes 0
