@@ -30,29 +30,32 @@ def parse_portal_date(text_content):
         try:
             naive_dt = datetime.strptime(date_str, "%b %d, %Y %I:%M %p")
             return naive_dt.replace(tzinfo=IST)
-        except Exception as e:
-            print(f"[-] Date parsing error: {e}")
+        except Exception:
+            pass
     return None
 
-def monitor_and_extract(context, page, lecture_title, package_index):
+def monitor_and_extract(context, page, lecture_title):
     print(f"[+] Fail-Safe activated for: {lecture_title}")
     
     max_attempts = 40
     for attempt in range(max_attempts):
         print(f"[*] Attempt {attempt + 1}/{max_attempts}: Checking for live button...")
         try:
-            page.reload(wait_until="networkidle")
-            page.wait_for_timeout(3000) 
+            page.reload(wait_until="load")
             
-            # CRITICAL: Re-select the correct package folder after the page reloads!
-            page.locator("select.newselect").select_option(index=package_index)
+            # Smart Wait: Ensure Angular loads the package before clicking
+            try:
+                page.wait_for_selector("text='NET DEC'", timeout=10000)
+            except:
+                pass
             page.wait_for_timeout(2000)
             
-            # Click Live tab
-            page.locator("text='Live'").first.click()
-            page.wait_for_timeout(3000) 
+            # Bulletproof Angular Click
+            page.locator("a[data-toggle='tab']:has-text('Live')").first.click(force=True)
+            page.wait_for_timeout(4000) 
             
-            lecture_row = page.locator("tr", has_text=lecture_title)
+            # ONLY search inside the currently active tab
+            lecture_row = page.locator("div.tab-pane.active tr", has_text=lecture_title)
             
             if lecture_row.count() > 0:
                 play_button = lecture_row.locator("text='Play'").first
@@ -62,7 +65,7 @@ def monitor_and_extract(context, page, lecture_title, package_index):
                 if play_button.is_visible():
                     print("[+] Class is LIVE! Intercepting Zoom redirect...")
                     with context.expect_page() as new_page_info:
-                        play_button.click()
+                        play_button.click(force=True)
                     
                     zoom_page = new_page_info.value
                     zoom_page.wait_for_load_state("networkidle")
@@ -87,74 +90,69 @@ def check_schedule():
     
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
-        context = browser.new_context(extra_http_headers={"Cookie": MY_COOKIE_STRING})
+        # Spoof timezone to perfectly match your Indian schedule
+        context = browser.new_context(
+            extra_http_headers={"Cookie": MY_COOKIE_STRING},
+            timezone_id="Asia/Kolkata"
+        )
         page = context.new_page()
-
-        page.route("**/*", lambda route: route.abort() 
-                   if route.request.resource_type in ["image", "stylesheet", "font", "media"] 
-                   else route.continue_())
         
-        page.goto(PORTAL_URL, wait_until="networkidle")
-        page.wait_for_timeout(3000) 
+        page.goto(PORTAL_URL, wait_until="load")
         
-        # --- THE SCANNER UPGRADE ---
-        # Count how many different course packages you have in the dropdown
-        dropdown_options = page.locator("select.newselect option").count()
-        print(f"[*] Found {dropdown_options} course packages in the dropdown.")
+        print("[*] Waiting for Angular to initialize course packages...")
+        try:
+            # Smart Wait: Watches the screen until your specific package text appears
+            page.wait_for_selector("text='NET DEC'", timeout=15000)
+        except Exception as e:
+            print("[-] Package text wait timed out, continuing anyway...")
+        page.wait_for_timeout(3000) # Give it a moment to settle
         
+        print("[*] Clicking the Live tab...")
+        try:
+            page.locator("a[data-toggle='tab']:has-text('Live')").first.click(force=True)
+            page.wait_for_timeout(5000) 
+        except Exception as e:
+            print(f"[-] Could not click Live tab: {e}")
+            
+        # CRITICAL FIX: Only grab rows from the ACTIVE Live tab, ignore the hidden Videos tab
+        rows = page.locator("div.tab-pane.active tr").all()
         upcoming_class_found = False
         
-        for package_idx in range(dropdown_options):
-            if upcoming_class_found:
+        for row in rows:
+            row_text = row.text_content()
+            
+            if not row_text or "lecture" not in row_text.lower():
+                continue
+                
+            class_time = parse_portal_date(row_text)
+            if not class_time:
+                continue
+                
+            lines = [line.strip() for line in row_text.splitlines() if line.strip()]
+            if not lines:
+                continue
+            lecture_title = lines[0]
+            
+            if "Completed" in row_text or "Ended" in row_text:
+                continue
+
+            time_difference = class_time - now_ist
+            if timedelta(minutes=-180) <= time_difference <= timedelta(minutes=180):
+                upcoming_class_found = True
+                sleep_seconds = max(0, int(time_difference.total_seconds()))
+                
+                print(f"[+] Found Target Class: {lecture_title}")
+                print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
+                
+                if sleep_seconds > 0:
+                    print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
+                    time.sleep(sleep_seconds)
+                else:
+                    print("[*] Class time has already arrived! Executing immediately.")
+                
+                monitor_and_extract(context, page, lecture_title)
                 break
                 
-            print(f"[*] Scanning package folder #{package_idx + 1}...")
-            # Select the folder by its position in the list
-            page.locator("select.newselect").select_option(index=package_idx)
-            page.wait_for_timeout(2000) 
-            
-            # Click Live tab for this specific folder
-            page.locator("text='Live'").first.click()
-            page.wait_for_timeout(3000) 
-            
-            rows = page.locator("tr").all()
-            
-            for row in rows:
-                row_text = row.text_content()
-                
-                if not row_text or "lecture" not in row_text.lower():
-                    continue
-                    
-                class_time = parse_portal_date(row_text)
-                if not class_time:
-                    continue
-                    
-                lines = [line.strip() for line in row_text.splitlines() if line.strip()]
-                if not lines:
-                    continue
-                lecture_title = lines[0]
-                
-                if "Completed" in row_text or "Ended" in row_text:
-                    continue
-
-                time_difference = class_time - now_ist
-                if timedelta(minutes=-50) <= time_difference <= timedelta(minutes=180):
-                    upcoming_class_found = True
-                    sleep_seconds = max(0, int(time_difference.total_seconds()))
-                    
-                    print(f"[+] Found Target Class: {lecture_title}")
-                    print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
-                    
-                    if sleep_seconds > 0:
-                        print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
-                        time.sleep(sleep_seconds)
-                    else:
-                        print("[*] Class time has already arrived! Executing immediately.")
-                    
-                    # We pass the package_idx so the loop remembers which folder to open!
-                    monitor_and_extract(context, page, lecture_title, package_idx)
-                    break
-                    
         if not upcoming_class_found:
             print("[*] Scan complete: No classes scheduled within the next 180 minutes. Exiting instantly.")
             
