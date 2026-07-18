@@ -32,7 +32,6 @@ def parse_portal_date(text_content):
     if match:
         date_str = match.group(1)
         try:
-            # Parse the string into a datetime object and attach IST timezone
             naive_dt = datetime.strptime(date_str, "%b %d, %Y %I:%M %p")
             return naive_dt.replace(tzinfo=IST)
         except Exception as e:
@@ -42,16 +41,19 @@ def parse_portal_date(text_content):
 def monitor_and_extract(context, page, lecture_title):
     print(f"[+] Fail-Safe activated for: {lecture_title}")
     
-    # Retry window parameters: try every 30 seconds for 20 minutes (40 attempts)
     max_attempts = 40
     for attempt in range(max_attempts):
         print(f"[*] Attempt {attempt + 1}/{max_attempts}: Checking for live button...")
         try:
             page.reload(wait_until="networkidle")
+            
+            # CRITICAL FIX: The site defaults to the first tab on reload. We must click Live again!
+            page.locator("text='Live'").first.click()
+            page.wait_for_timeout(3000) # Wait for the Angular API to fetch the classes
+            
             lecture_row = page.locator("tr", has_text=lecture_title)
             
             if lecture_row.count() > 0:
-                # Target the play button inside this specific lecture row
                 play_button = lecture_row.locator("text='Play'").first
                 if not play_button.is_visible():
                     play_button = lecture_row.locator("text='Play 1'").first
@@ -66,18 +68,15 @@ def monitor_and_extract(context, page, lecture_title):
                     zoom_url = zoom_page.url
                     zoom_page.close()
                     
-                    # Target achieved! Send message and terminate script cleanly
                     send_telegram_msg(f"✨ Live Class Link Captured!\n📌 {lecture_title}\n🔗 Link: {zoom_url}")
                     return True
             
             print("[-] Button not active or page loading. Retrying in 30 seconds...")
         except Exception as error:
-            # Crucial Fail-Safe: If any browser or network error happens, catch it and keep looping
             print(f"⚠️ Transient error intercepted: {error}")
             
         time.sleep(30)
         
-    # If loop completely finishes without success
     send_telegram_msg(f"❌ Fail-Safe Alert: {lecture_title} time arrived, but the link could not be captured within 20 minutes.")
     return False
 
@@ -90,44 +89,42 @@ def check_schedule():
         context = browser.new_context(extra_http_headers={"Cookie": MY_COOKIE_STRING})
         page = context.new_page()
 
-        # Intercept and block all images, CSS, fonts, and media
         page.route("**/*", lambda route: route.abort() 
                    if route.request.resource_type in ["image", "stylesheet", "font", "media"] 
                    else route.continue_())
         
         page.goto(PORTAL_URL, wait_until="networkidle")
-        page.locator("text='Live'").first.click()
         
-        # Gather all table rows from the live classes tab
+        # CRITICAL FIX: Wait for the API to load the data after clicking the tab
+        page.locator("text='Live'").first.click()
+        page.wait_for_timeout(3000) 
+        
         rows = page.locator("tr").all()
         upcoming_class_found = False
         
         for row in rows:
             row_text = row.text_content()
-            if not row_text or "Lecture" not in row_text:
+            
+            # CRITICAL FIX: Convert text to lowercase to catch "LECTURE" or "Lecture"
+            if not row_text or "lecture" not in row_text.lower():
                 continue
                 
             class_time = parse_portal_date(row_text)
             if not class_time:
                 continue
                 
-            # DYNAMIC TARGETING: Grab the exact text of the first line in the row, no matter what it says.
             lines = [line.strip() for line in row_text.splitlines() if line.strip()]
             if not lines:
                 continue
-            lecture_title = lines[0] # Locks onto the exact name the professor typed today
+            lecture_title = lines[0]
             
-            # If the row says it's already Completed or Cancelled, skip it immediately!
             if "Completed" in row_text or "Ended" in row_text:
                 continue
-            # -----------------------------
 
-            # Check if class starts in next 180 mins OR is currently ongoing (started up to 25 mins ago)
             time_difference = class_time - now_ist
             if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
                 upcoming_class_found = True
                 
-                # If time_difference is negative (class already started), sleep_seconds becomes 0
                 sleep_seconds = max(0, int(time_difference.total_seconds()))
                 
                 print(f"[+] Found Target Class: {lecture_title}")
@@ -139,10 +136,8 @@ def check_schedule():
                 else:
                     print("[*] Class time has already arrived! Executing immediately.")
                 
-                # Execute the fail-safe retrieval loop
                 monitor_and_extract(context, page, lecture_title)
                 break
-
                 
         if not upcoming_class_found:
             print("[*] Scan complete: No classes scheduled within the next 180 minutes. Exiting instantly.")
