@@ -12,7 +12,6 @@ PORTAL_URL = "https://course.onlinecareerendeavour.com/student/tests"
 MY_COOKIE_STRING = os.environ.get("MY_COOKIE_STRING")
 # ----------------------
 
-# Indian Standard Time (IST) Offset is UTC + 5:30
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def send_telegram_msg(message):
@@ -25,9 +24,6 @@ def send_telegram_msg(message):
         print(f"[-] Messaging failed: {e}")
 
 def parse_portal_date(text_content):
-    """
-    Extracts and parses dates like 'Jul 14, 2026 9:30 AM' from page text
-    """
     match = re.search(r'([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s+[A-P]M)', text_content)
     if match:
         date_str = match.group(1)
@@ -35,10 +31,10 @@ def parse_portal_date(text_content):
             naive_dt = datetime.strptime(date_str, "%b %d, %Y %I:%M %p")
             return naive_dt.replace(tzinfo=IST)
         except Exception as e:
-            print(f"[-] Date parsing error for '{date_str}': {e}")
+            print(f"[-] Date parsing error: {e}")
     return None
 
-def monitor_and_extract(context, page, lecture_title):
+def monitor_and_extract(context, page, lecture_title, package_index):
     print(f"[+] Fail-Safe activated for: {lecture_title}")
     
     max_attempts = 40
@@ -46,10 +42,15 @@ def monitor_and_extract(context, page, lecture_title):
         print(f"[*] Attempt {attempt + 1}/{max_attempts}: Checking for live button...")
         try:
             page.reload(wait_until="networkidle")
+            page.wait_for_timeout(3000) 
             
-            # CRITICAL FIX: The site defaults to the first tab on reload. We must click Live again!
+            # CRITICAL: Re-select the correct package folder after the page reloads!
+            page.locator("select.newselect").select_option(index=package_index)
+            page.wait_for_timeout(2000)
+            
+            # Click Live tab
             page.locator("text='Live'").first.click()
-            page.wait_for_timeout(3000) # Wait for the Angular API to fetch the classes
+            page.wait_for_timeout(3000) 
             
             lecture_row = page.locator("tr", has_text=lecture_title)
             
@@ -71,13 +72,13 @@ def monitor_and_extract(context, page, lecture_title):
                     send_telegram_msg(f"✨ Live Class Link Captured!\n📌 {lecture_title}\n🔗 Link: {zoom_url}")
                     return True
             
-            print("[-] Button not active or page loading. Retrying in 30 seconds...")
+            print("[-] Button not active. Retrying in 30 seconds...")
         except Exception as error:
             print(f"⚠️ Transient error intercepted: {error}")
             
         time.sleep(30)
         
-    send_telegram_msg(f"❌ Fail-Safe Alert: {lecture_title} time arrived, but the link could not be captured within 20 minutes.")
+    send_telegram_msg(f"❌ Fail-Safe Alert: {lecture_title} link could not be captured.")
     return False
 
 def check_schedule():
@@ -94,51 +95,66 @@ def check_schedule():
                    else route.continue_())
         
         page.goto(PORTAL_URL, wait_until="networkidle")
-        
-        # CRITICAL FIX: Wait for the API to load the data after clicking the tab
-        page.locator("text='Live'").first.click()
         page.wait_for_timeout(3000) 
         
-        rows = page.locator("tr").all()
+        # --- THE SCANNER UPGRADE ---
+        # Count how many different course packages you have in the dropdown
+        dropdown_options = page.locator("select.newselect option").count()
+        print(f"[*] Found {dropdown_options} course packages in the dropdown.")
+        
         upcoming_class_found = False
         
-        for row in rows:
-            row_text = row.text_content()
-            
-            # CRITICAL FIX: Convert text to lowercase to catch "LECTURE" or "Lecture"
-            if not row_text or "lecture" not in row_text.lower():
-                continue
-                
-            class_time = parse_portal_date(row_text)
-            if not class_time:
-                continue
-                
-            lines = [line.strip() for line in row_text.splitlines() if line.strip()]
-            if not lines:
-                continue
-            lecture_title = lines[0]
-            
-            if "Completed" in row_text or "Ended" in row_text:
-                continue
-
-            time_difference = class_time - now_ist
-            if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
-                upcoming_class_found = True
-                
-                sleep_seconds = max(0, int(time_difference.total_seconds()))
-                
-                print(f"[+] Found Target Class: {lecture_title}")
-                print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
-                
-                if sleep_seconds > 0:
-                    print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
-                    time.sleep(sleep_seconds)
-                else:
-                    print("[*] Class time has already arrived! Executing immediately.")
-                
-                monitor_and_extract(context, page, lecture_title)
+        for package_idx in range(dropdown_options):
+            if upcoming_class_found:
                 break
                 
+            print(f"[*] Scanning package folder #{package_idx + 1}...")
+            # Select the folder by its position in the list
+            page.locator("select.newselect").select_option(index=package_idx)
+            page.wait_for_timeout(2000) 
+            
+            # Click Live tab for this specific folder
+            page.locator("text='Live'").first.click()
+            page.wait_for_timeout(3000) 
+            
+            rows = page.locator("tr").all()
+            
+            for row in rows:
+                row_text = row.text_content()
+                
+                if not row_text or "lecture" not in row_text.lower():
+                    continue
+                    
+                class_time = parse_portal_date(row_text)
+                if not class_time:
+                    continue
+                    
+                lines = [line.strip() for line in row_text.splitlines() if line.strip()]
+                if not lines:
+                    continue
+                lecture_title = lines[0]
+                
+                if "Completed" in row_text or "Ended" in row_text:
+                    continue
+
+                time_difference = class_time - now_ist
+                if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
+                    upcoming_class_found = True
+                    sleep_seconds = max(0, int(time_difference.total_seconds()))
+                    
+                    print(f"[+] Found Target Class: {lecture_title}")
+                    print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
+                    
+                    if sleep_seconds > 0:
+                        print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
+                        time.sleep(sleep_seconds)
+                    else:
+                        print("[*] Class time has already arrived! Executing immediately.")
+                    
+                    # We pass the package_idx so the loop remembers which folder to open!
+                    monitor_and_extract(context, page, lecture_title, package_idx)
+                    break
+                    
         if not upcoming_class_found:
             print("[*] Scan complete: No classes scheduled within the next 180 minutes. Exiting instantly.")
             
