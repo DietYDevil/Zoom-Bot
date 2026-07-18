@@ -138,7 +138,7 @@ def check_schedule():
                     continue
 
                 time_difference = class_time - now_ist
-                if timedelta(minutes=-25) <= time_difference <= timedelta(minutes=180):
+                if timedelta(minutes=-50) <= time_difference <= timedelta(minutes=180):
                     upcoming_class_found = True
                     sleep_seconds = max(0, int(time_difference.total_seconds()))
                     
