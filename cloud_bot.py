@@ -1,162 +1,113 @@
 import os
-import time
-import re
-from datetime import datetime, timedelta, timezone
 import requests
-from playwright.sync_api import sync_playwright
+import time
+from datetime import datetime, timedelta, timezone
 
-# --- CONFIGURATION ---
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-PORTAL_URL = "https://course.onlinecareerendeavour.com/student/tests"
-MY_COOKIE_STRING = os.environ.get("MY_COOKIE_STRING")
-# ----------------------
-
+# Configurations
+URL = "https://course.onlinecareerendeavour.com/student/tests/get-live-videos/6a11721a519e790e090f33f9"
 IST = timezone(timedelta(hours=5, minutes=30))
 
-def send_telegram_msg(message):
+# Secrets fetched from GitHub Actions Environment
+MY_COOKIE = os.environ.get("PORTAL_COOKIE")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+HEADERS = {
+    "accept": "application/json, text/plain, */*",
+    "cookie": MY_COOKIE,
+    "user-agent": "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36"
+}
+
+def send_telegram_msg(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message}
+    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
+    requests.post(url, json=payload)
+
+def fetch_class_data():
     try:
-        requests.post(url, json=payload)
-        print("[+] Telegram alert sent successfully.")
+        response = requests.get(URL, headers=HEADERS, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("status") and data.get("data"):
+                return data["data"]
     except Exception as e:
-        print(f"[-] Messaging failed: {e}")
+        print(f"[-] Fetch error: {e}")
+    return []
 
-def parse_portal_date(text_content):
-    match = re.search(r'([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4}\s+\d{1,2}:\d{2}\s+[A-P]M)', text_content)
-    if match:
-        date_str = match.group(1)
-        try:
-            naive_dt = datetime.strptime(date_str, "%b %d, %Y %I:%M %p")
-            return naive_dt.replace(tzinfo=IST)
-        except Exception:
-            pass
-    return None
-
-def monitor_and_extract(context, page, lecture_title):
-    print(f"[+] Fail-Safe activated for: {lecture_title}")
-    
-    max_attempts = 40
-    for attempt in range(max_attempts):
-        print(f"[*] Attempt {attempt + 1}/{max_attempts}: Checking for live button...")
-        try:
-            page.reload(wait_until="load")
-            
-            # Smart Wait: Ensure Angular loads the package before clicking
-            try:
-                page.wait_for_selector("text='NET DEC'", timeout=10000)
-            except:
-                pass
-            page.wait_for_timeout(2000)
-            
-            # Bulletproof Angular Click
-            page.locator("a[data-toggle='tab']:has-text('Live')").first.click(force=True)
-            page.wait_for_timeout(4000) 
-            
-            # ONLY search inside the currently active tab
-            lecture_row = page.locator("div.tab-pane.active tr", has_text=lecture_title)
-            
-            if lecture_row.count() > 0:
-                play_button = lecture_row.locator("text='Play'").first
-                if not play_button.is_visible():
-                    play_button = lecture_row.locator("text='Play 1'").first
-
-                if play_button.is_visible():
-                    print("[+] Class is LIVE! Intercepting Zoom redirect...")
-                    with context.expect_page() as new_page_info:
-                        play_button.click(force=True)
-                    
-                    zoom_page = new_page_info.value
-                    zoom_page.wait_for_load_state("networkidle")
-                    zoom_url = zoom_page.url
-                    zoom_page.close()
-                    
-                    send_telegram_msg(f"✨ Live Class Link Captured!\n📌 {lecture_title}\n🔗 Link: {zoom_url}")
-                    return True
-            
-            print("[-] Button not active. Retrying in 30 seconds...")
-        except Exception as error:
-            print(f"⚠️ Transient error intercepted: {error}")
-            
-        time.sleep(30)
-        
-    send_telegram_msg(f"❌ Fail-Safe Alert: {lecture_title} link could not be captured.")
-    return False
-
-def check_schedule():
+def main():
     now_ist = datetime.now(timezone.utc).astimezone(IST)
-    print(f"[*] Cloud run initialization time: {now_ist.strftime('%Y-%m-%d %I:%M:%S %p')} IST")
+    print(f"[*] Bot initialized at {now_ist.strftime('%Y-%m-%d %I:%M:%S %p')} IST")
     
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        # Spoof timezone to perfectly match your Indian schedule
-        context = browser.new_context(
-            extra_http_headers={"Cookie": MY_COOKIE_STRING},
-            timezone_id="Asia/Kolkata"
-        )
-        page = context.new_page()
-        
-        page.goto(PORTAL_URL, wait_until="load")
-        
-        print("[*] Waiting for Angular to initialize course packages...")
-        try:
-            # Smart Wait: Watches the screen until your specific package text appears
-            page.wait_for_selector("text='NET DEC'", timeout=15000)
-        except Exception as e:
-            print("[-] Package text wait timed out, continuing anyway...")
-        page.wait_for_timeout(3000) # Give it a moment to settle
-        
-        print("[*] Clicking the Live tab...")
-        try:
-            page.locator("a[data-toggle='tab']:has-text('Live')").first.click(force=True)
-            page.wait_for_timeout(5000) 
-        except Exception as e:
-            print(f"[-] Could not click Live tab: {e}")
-            
-        # CRITICAL FIX: Only grab rows from the ACTIVE Live tab, ignore the hidden Videos tab
-        rows = page.locator("div.tab-pane.active tr").all()
-        upcoming_class_found = False
-        
-        for row in rows:
-            row_text = row.text_content()
-            
-            if not row_text or "lecture" not in row_text.lower():
-                continue
-                
-            class_time = parse_portal_date(row_text)
-            if not class_time:
-                continue
-                
-            lines = [line.strip() for line in row_text.splitlines() if line.strip()]
-            if not lines:
-                continue
-            lecture_title = lines[0]
-            
-            if "Completed" in row_text or "Ended" in row_text:
-                continue
+    classes = fetch_class_data()
+    if not classes:
+        print("[*] No classes found in database. Exiting.")
+        return
 
-            time_difference = class_time - now_ist
-            if timedelta(minutes=-180) <= time_difference <= timedelta(minutes=180):
-                upcoming_class_found = True
-                sleep_seconds = max(0, int(time_difference.total_seconds()))
-                
-                print(f"[+] Found Target Class: {lecture_title}")
-                print(f"[*] Scheduled for: {class_time.strftime('%I:%M %p')} IST")
-                
-                if sleep_seconds > 0:
-                    print(f"[*] Sleeping for {sleep_seconds} seconds until class begins...")
-                    time.sleep(sleep_seconds)
-                else:
-                    print("[*] Class time has already arrived! Executing immediately.")
-                
-                monitor_and_extract(context, page, lecture_title)
-                break
-                
-        if not upcoming_class_found:
-            print("[*] Scan complete: No classes scheduled within the next 180 minutes. Exiting instantly.")
+    target_class = None
+    target_class_time = None
+
+    # Step 1: Scan for the correct class in the active 2-hour window
+    for cls in classes:
+        title = cls.get("title", "Unknown Class")
+        unix_time = cls.get("time_schedule")
+        class_time = datetime.fromtimestamp(unix_time, tz=IST)
+        
+        # Calculate exactly how many minutes away the class is
+        diff_mins = (class_time - datetime.now(timezone.utc).astimezone(IST)).total_seconds() / 60
+        
+        print(f"--- ANALYZING: {title} ---")
+        print(f"    Scheduled: {class_time.strftime('%I:%M %p')}")
+        
+        if diff_mins < 0:
+            print("    ❌ ACTION: Ignored (Class is in the past)")
+        elif diff_mins > 130:
+            print("    ❌ ACTION: Ignored (Class is too far in the future, will be caught in next cron run)")
+        else:
+            print("    ✅ ACTION: Target Locked! (Class is coming up in this 2-hour window)")
+            target_class = cls
+            target_class_time = class_time
+            # Break the loop so we only focus on the next immediate class
+            break 
             
-        browser.close()
+    print("-" * 50)
+
+    # Step 2: Execute the 5-Minute Warning Logic
+    if target_class:
+        title = target_class.get("title", "Unknown Class")
+        unix_time = target_class.get("time_schedule")
+        
+        # Recalculate time to ensure precision right before sleeping
+        current_time = datetime.now(timezone.utc).astimezone(IST)
+        seconds_until_class = (target_class_time - current_time).total_seconds()
+        
+        # We want to wake up exactly 300 seconds (5 minutes) before the class starts
+        sleep_seconds = seconds_until_class - 300 
+        
+        if sleep_seconds > 0:
+            print(f"[*] Sleeping for {int(sleep_seconds / 60)} minutes to wait for link generation...")
+            time.sleep(sleep_seconds)
+            
+        print("[*] 5-MINUTE WARNING! Fetching fresh Zoom credentials...")
+        fresh_classes = fetch_class_data()
+        
+        # Find the exact same class in the fresh data to pull the generated link
+        for fresh_cls in fresh_classes:
+            if fresh_cls.get("time_schedule") == unix_time:
+                zoom_url = fresh_cls.get("zoom_join_url", "No Link Yet")
+                zoom_pass = fresh_cls.get("zoom_password", "None")
+                
+                msg = (
+                    f"🚨 <b>CLASS STARTING IN FEW MINS</b> 🚨\n\n"
+                    f"📚 <b>Subject:</b> {title}\n"
+                    f"⏰ <b>Time:</b> {target_class_time.strftime('%I:%M %p')}\n"
+                    f"🔗 <b>Zoom Link:</b> {zoom_url}\n"
+                    f"🔑 <b>Passcode:</b> {zoom_pass}"
+                )
+                send_telegram_msg(msg)
+                print("[+] Telegram alert sent successfully! Terminating script.")
+                return 
+
+    print("[*] Scan complete. Shutting down until next cron schedule.")
 
 if __name__ == "__main__":
-    check_schedule()
+    main()
