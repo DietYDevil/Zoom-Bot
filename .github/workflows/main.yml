@@ -1,31 +1,30 @@
 name: Run Zoom Bot
 
-on:
-  repository_dispatch:
-    types: [class-starting-trigger] # The secret knock that wakes up the server
+on:  
+  repository_dispatch:    
+    types: [class-starting-trigger] # The secret knock that wakes up the server  
   workflow_dispatch: 
 
-jobs:
-  run-bot:
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
-
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-
-    - name: Install Dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install requests
-        
-    - name: Run Cloud Bot
+jobs:  
+  run-bot:    
+    runs-on: ubuntu-latest    
+    steps:    
+    - name: Checkout Code      
+      uses: actions/checkout@v4    
+    
+    - name: Set up Python      
+      uses: actions/setup-python@v5      
+      with:        
+        python-version: '3.10'    
+    
+    - name: Install Dependencies      
+      run: |        
+        python -m pip install --upgrade pip        
+        pip install requests            
+    
+    - name: Run Cloud Bot      
       env:
-        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        CHAT_ID: ${{ secrets.CHAT_ID }}
-        MY_COOKIE_STRING: ${{ secrets.MY_COOKIE_STRING }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}        
+        TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}        
+        PORTAL_COOKIE: ${{ secrets.MY_COOKIE_STRING }}      
       run: python cloud_bot.py
