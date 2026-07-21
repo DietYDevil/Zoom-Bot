@@ -27,7 +27,7 @@ def send_telegram_msg(text):
     requests.post(url, json=payload)
 
 def fetch_class_data():
-    f not MY_COOKIE:
+    if not MY_COOKIE:
         print("[-] FATAL ERROR: MY_COOKIE is EMPTY! Your GitHub Secrets are not linked correctly in the YAML file.")
         return []
     print(f"[*] Debug: Cookie loaded successfully (Length: {len(MY_COOKIE)})")
