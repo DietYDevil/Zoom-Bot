@@ -19,17 +19,34 @@ HEADERS = {
 }
 
 def send_telegram_msg(text):
+    if not BOT_TOKEN or not CHAT_ID:
+        print("[-] Error: Telegram credentials are missing.")
+        return
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
     requests.post(url, json=payload)
 
 def fetch_class_data():
+    f not MY_COOKIE:
+        print("[-] FATAL ERROR: MY_COOKIE is EMPTY! Your GitHub Secrets are not linked correctly in the YAML file.")
+        return []
+    print(f"[*] Debug: Cookie loaded successfully (Length: {len(MY_COOKIE)})")
+
     try:
         response = requests.get(URL, headers=HEADERS, timeout=10)
+        print(f"[*] Debug: HTTP Status Code: {response.status_code}")
         if response.status_code == 200:
-            data = response.json()
-            if data.get("status") and data.get("data"):
-                return data["data"]
+            try:
+                data = response.json()
+                if data.get("status") and data.get("data"):
+                    return data["data"]
+            except ValueError:
+                print("[-] FATAL ERROR: Server returned HTML instead of JSON.")
+                print(f"[-] RAW SERVER RESPONSE: {response.text[:500]}")
+        else:
+            print(f"[-] Server rejected the request.")
+            print(f"[-] RAW SERVER RESPONSE: {response.text[:500]}")
+                
     except Exception as e:
         print(f"[-] Fetch error: {e}")
     return []
