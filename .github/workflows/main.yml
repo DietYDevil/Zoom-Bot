@@ -24,7 +24,9 @@ jobs:
     
     - name: Run Cloud Bot      
       env:
+        # The left side must match the Python script exactly. 
+        # The right side grabs your specific GitHub Secrets.
         TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}        
         TELEGRAM_CHAT_ID: ${{ secrets.CHAT_ID }}        
-        PORTAL_COOKIE: ${{ secrets.MY_COOKIE_STRING }}      
+        PORTAL_COOKIE: ${{ secrets.MY_COOKIE }}      
       run: python cloud_bot.py
