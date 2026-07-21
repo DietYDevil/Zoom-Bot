@@ -8,7 +8,7 @@ URL = "https://course.onlinecareerendeavour.com/student/tests/get-live-videos/6a
 IST = timezone(timedelta(hours=5, minutes=30))
 
 # Secrets fetched from GitHub Actions Environment
-MY_COOKIE = os.environ.get("PORTAL_COOKIE")
+MY_COOKIE = os.environ.get("PORTAL_COOKIE", "").strip()
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
