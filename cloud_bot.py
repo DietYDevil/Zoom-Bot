@@ -22,9 +22,21 @@ def send_telegram_msg(text):
     if not BOT_TOKEN or not CHAT_ID:
         print("[-] Error: Telegram credentials are missing.")
         return
+        
+    # Safely escape HTML characters that crash Telegram
+    safe_text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": text, "parse_mode": "HTML"}
-    requests.post(url, json=payload)
+    payload = {"chat_id": CHAT_ID, "text": safe_text, "parse_mode": "HTML"}
+    
+    response = requests.post(url, json=payload)
+    
+    # Actually check if Telegram accepted the message
+    if response.status_code != 200:
+        print(f"[-] Telegram API Error {response.status_code}: {response.text}")
+    else:
+        # We will keep the success print here instead of the main loop
+        pass
 
 def fetch_class_data():
     if not MY_COOKIE:
@@ -124,7 +136,7 @@ def main():
                 print("[+] Telegram alert sent successfully! Terminating script.")
                 return 
 
-    print("[*] Scan complete. Shutting down until next cron schedule.")
+    # print("[*] Scan complete. Shutting down until next cron schedule.")
 
 if __name__ == "__main__":
     main()
