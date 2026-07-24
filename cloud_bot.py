@@ -87,7 +87,7 @@ def main():
         print(f"--- ANALYZING: {title} ---")
         print(f"    Scheduled: {class_time.strftime('%I:%M %p')}")
         
-        if diff_mins < -15:
+        if diff_mins < -5:
             print("    ❌ ACTION: Ignored (Class is in the past)")
         elif diff_mins > 130:
             print("    ❌ ACTION: Ignored (Class is too far in the future, will be caught in next cron run)")
